@@ -1,0 +1,46 @@
+#Check for packages.  If not installed, install it.
+check<-library("FNN",logical.return=T,quietly=T,verbose=F)
+if(check=="FALSE"){
+  install.packages("FNN")
+  library("FNN")
+}
+check<-library("Hotelling",logical.return=T,quietly=T,verbose=F)
+if(check=="FALSE"){
+  install.packages("Hotelling")
+  library("Hotelling")
+}
+check<-library("boot",logical.return=T,quietly=T,verbose=F)
+if(check=="FALSE"){
+  install.packages("boot")
+  library("boot")
+}
+check<-library("ggplot2",logical.return=T,quietly=T,verbose=F)
+if(check=="FALSE"){
+  install.packages("ggplot2")
+  library("ggplot2")
+}
+check<-library("MASS",logical.return=T,quietly=T,verbose=F)
+if(check=="FALSE"){
+  install.packages("MASS")
+  library("MASS")
+}
+check<-library("foreach",logical.return=T,quietly=T,verbose=F)
+if(check=="FALSE"){
+  install.packages("foreach")
+  library("foreach")
+}
+check<-library("doSNOW",logical.return=T,quietly=T,verbose=F)
+if(check=="FALSE"){
+  install.packages("doSNOW")
+  library("doSNOW")
+}
+check<-library("snow",logical.return=T,quietly=T,verbose=F)
+if(check=="FALSE"){
+  install.packages("snow")
+  library("snow")
+}
+check<-library("MASS",logical.return=T,quietly=T,verbose=F)
+if(check=="FALSE"){
+  install.packages("MASS")
+  library("MASS")
+}

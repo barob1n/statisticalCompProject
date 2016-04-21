@@ -1,0 +1,512 @@
+timingDim.list<-list()
+#cl <- makeCluster(mc <- getOption("cl.cores", 4))
+#clusterExport(cl=cl, varlist=c("S","z","numRows","maxRows"),.export=c("get.knn","nNeighbor","edist"),envir=environment())
+#clusterExport(varlist=c("S","z","numRows","maxRows","num"),envir=environment())
+for(d in 1:length(steps_dim)){
+dimension<-steps_dim[d]
+#A - Std normal - this distribution does not change, it is the base case
+Sigma<-diag(dimension)
+A <- mvrnorm(50,c(numeric(dimension)),Sigma)
+for(p in 1:length(samples) ){
+m<-samples[p]
+n<-samples[p]
+#status update
+for(i in 1:length(steps_mu)){
+print(i,steps_mu)  #will tell us far along we are in moving the mean of the second distribution
+for(j in 1:thisManyTests){
+#This sample changes
+B <- mvrnorm(50,c(numeric(dimension-1),steps_mu[i]),Sigma)
+#Get data for ks stat
+ptm <- proc.time()
+data <- permTestBR(A,B,R,stat=ks.test,exact=FALSE)
+mu_p_data[j,"ks"] <- mean(data>=data[1])
+timing[j,"ks"]=timing[j,"ks"]+(proc.time() - ptm)[1]
+#Get data for simple stat
+ptm <- proc.time()
+data<-permTestBR(A,B,R,stat=t.test)
+mu_p_data[j,"t.test"]<-mean(data<=data[1])
+timing[j,"t.test"]=timing[j,"t.test"]+(proc.time() - ptm)[1]
+#Get data for hotel stat
+#ptm <- proc.time()
+#data<-permTestBR(A,B,R,stat=hotel.stat,shrinkage=FALSE)
+#mu_p_data[j,"hotel"]<-mean(data>=data[1])
+#timing[j,"hotel"]=timing[j,"hotel"]+(proc.time() - ptm)[1]
+#Get data for near neighbor stat
+ptm <- proc.time()
+data<-permTestBR(A,B,R,stat=nNeighbor,k=3)
+mu_p_data[j,"nn"]<-mean(data>=data[1])
+timing[j,"nn"]=timing[j,"nn"]+(proc.time() - ptm)[1]
+#Get data for edist stat
+ptm <- proc.time()
+data<-permTestBR(A,B,R,stat=edist)
+mu_p_data[j,"edist"]<-mean(data>=data[1])
+timing[j,"edist"]=timing[j,"edist"]+(proc.time() - ptm)[1]
+#Permutation test on quadratic MMD statistic done in MMD code
+ptm <- proc.time()
+#function does own permuting to speed up computation
+mu_p_data[j,"mmd"] <- uMMDDecision(A,B,R)
+timing[j,"mmd"]=timing[j,"mmd"]+(proc.time() - ptm)[1]
+}
+#Now that we've tested the methods on different samples, check how well they distinguish different distributions
+getPercentPass<-colSums(mu_p_data<=alpha)/(thisManyTests)*100
+percent_mu[i,]<-as.matrix(getPercentPass)
+}
+#list containing the type II data
+typeII.list[[p]]<-percent_mu
+timing.list[[p]]<-colSums(timing)
+# Stop the clock
+print(proc.time() - ptm)
+}
+dimData.list[[d]]<-typeII.list
+timingDim.list[[d]]<-timing.list
+}
+######################################## Plotting  #############################################
+#So, say samples was defined as samples<-c(5,10).  And you wanna plot the data for when
+#the number of samples was 5.  So you set whichSamples<-1 since
+#samples[whichSamples] = samples[1]=5.
+#loops to print while drilling down through lists
+for(i in 1:length(steps_dim)){
+dimData<-dimData.list[[i]]
+for(j in 1:length(samples)){
+meanData<-dimData[[j]]
+#for(k in 1:length(steps_mu)){
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS")) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "Student's T")) +
+geom_line(aes(y = t.test, col = "Student's T"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+# }
+}
+}
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS")) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test"),shape="t.test") +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS")) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test"),shape=0) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS")) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test",shape=0)) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS")) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test",shape="t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS"),shape="t.test")) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test") +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS"),shape=t.test)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test") +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS"),shape=0)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test") +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS"),shape=0)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS"),shape=t.test)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable,shape=variable)) +
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS")) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS")) +
+geom_line(aes(y = ks, col = "KS",shape=ks))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS")) +
+geom_line(aes(y = ks, col = "KS",shape=as.factor(ks)))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=as.factor(ks))) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=(ks))) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=0)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=0)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+scale_shape_identity()+
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=ks)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+scale_shape_identity() +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=ks)) +
+geom_line(aes(y = ks))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+scale_shape_identity() +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=ks)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+scale_shape_identity() +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+scale_shape_identity()+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=ks)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+scale_shape_identity()+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=18)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+scale_shape_identity()+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=2)) +
+geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
+title<-paste("Dimensions:",steps_dim[i],"Number of Samples:",samples[j])
+g <- ggplot(data=as.data.frame(cbind(steps_mu,meanData)),aes(steps_mu,y=value,color=variable) )+
+scale_shape_identity()+
+#geom_point(aes(y = percent_mu_ks, col = "KS")) +
+geom_point(aes(y = ks, col = "KS",shape=2)) +
+# geom_line(aes(y = ks, col = "KS"))+
+geom_point(aes(y = t.test, col = "t.test")) +
+geom_line(aes(y = t.test, col = "t.test"))+
+geom_point(aes(y = nn, col = "Nearest Neighbor")) +
+geom_line(aes(y = nn, col = "Nearest Neighbor"))+
+geom_point(aes( y = edist,col = "Energy")) +
+geom_line(aes( y = edist,col = "Energy")) +
+geom_point(aes( y = mmd,col = "MMD")) +
+geom_line(aes( y = mmd,col = "MMD")) +
+#geom_point(aes( y = hotel,col = "Hotelling")) +
+#geom_line(aes( y = hotel,col = "Hotelling")) +
+ggtitle(title) +
+labs(x="Distance Between Means",y="Percentage of Correct Rejections")
+plot(g)
